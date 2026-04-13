@@ -129,13 +129,21 @@ revert individual ones, or reset the branch.
 
 ### Phase 1: Reconnaissance (2-3 minutes)
 
-Scan these sources to understand what needs doing:
+Scan these sources to understand what needs doing, **in strict priority order**.
+The conversation history is the most important signal — it tells you what the user
+actually cares about right now.
 
-1. **Session history** — What has the user been working on? What's unfinished?
-2. **Git state** — Recent commits on `BRANCH`, branch context
-3. **Codebase TODOs** — `grep -r "TODO\|FIXME\|HACK\|XXX"` across the project
-4. **Unimplemented specs** — Check `docs/` for specs without matching implementation
-5. **Failing tests** — Run the test suite to find what's broken
+1. **Chat/session history (PRIMARY SOURCE)** — Read the full conversation history carefully.
+   What has the user been working on? What did they ask for that isn't done yet? What
+   problems did they mention? What did they say they wanted to do next? Extract concrete
+   unfinished tasks, stated intentions, and open threads. This is your #1 source for goals.
+2. **Unfinished changes** — Git state: recent commits on `BRANCH`, uncommitted work,
+   branch context. Cross-reference with session history to understand what's been
+   completed vs. still pending.
+3. **Unimplemented specs and designs** — Check `docs/` for specs or designs that have
+   been discussed or referenced in the session but lack matching implementation.
+4. **Failing tests** — Run the test suite to find what's broken
+5. **Codebase TODOs** — `grep -r "TODO\|FIXME\|HACK\|XXX"` across the project
 6. **CLAUDE.md / project docs** — Understand conventions and architecture
 
 ### Phase 2: Goal Proposal
@@ -165,10 +173,12 @@ Want me to proceed with these, or would you like to modify them?
 ```
 
 **Goal selection principles:**
-- Prioritize unfinished work from the current session first
-- Then failing tests and bugs
-- Then spec implementation
-- Then TODOs and tech debt
+- **Conversation history is king.** Prioritize unfinished work, stated next-steps, and
+  open problems from the chat session. If the user said "I still need to do X" or
+  "next I want to tackle Y", those are your top goals.
+- Then unfinished changes visible in the git state
+- Then unimplemented specs and designs
+- Then failing tests, bugs, TODOs, and tech debt
 - Each goal should be independently valuable (don't chain them)
 - Order by priority — if time runs out, earlier goals matter more
 
