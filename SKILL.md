@@ -28,9 +28,11 @@ This skill has two modes:
 
 1. **Check the current branch:**
    - Run: `git branch --show-current`
-   - If on `main` or `master`, **stop** and tell the user:
-     "You're on `main`. Please switch to a feature branch first
-     (e.g., `git checkout -b feat/my-feature`) so night shift work stays isolated."
+   - If on `main` or `master`, **propose creating a new branch** rather than waiting
+     for the user to do it manually. Suggest a descriptive name based on the intended
+     work (e.g., `night-shift/YYYY-MM-DD` or `feat/<topic>` inferred from session context)
+     and ask for confirmation or a different name. On confirmation, run
+     `git checkout -b <branch-name>` and proceed on the new branch.
    - If on any other branch (feature branch, existing night-shift branch, etc.),
      proceed — the agent will continue working on this branch.
 
