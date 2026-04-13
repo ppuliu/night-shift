@@ -37,15 +37,8 @@ This skill has two modes:
 2. **Check for stale state from a previous run:**
    - If `.night-shift/` directory exists in the repo root, a previous night shift
      either crashed or wasn't cleaned up properly.
-   - First, kill any stale caffeinate process:
-     ```bash
-     OLD_PID=$(cat .night-shift/caffeinate.pid 2>/dev/null)
-     if [ -n "$OLD_PID" ] && ps -p "$OLD_PID" -o comm= 2>/dev/null | grep -q caffeinate; then
-       kill "$OLD_PID" 2>/dev/null
-     fi
-     ```
-   - Tell the user: "Found leftover state from a previous night shift (and stopped
-     its caffeinate process). Want me to clean it up and start fresh?"
+   - Tell the user: "Found leftover state from a previous night shift.
+     Want me to clean it up and start fresh?"
    - On confirmation, `rm -rf .night-shift/` and continue.
    - If the user says no, stop — they may want to investigate.
 
@@ -54,68 +47,16 @@ This skill has two modes:
    ```bash
    grep -qxF '.night-shift/' .git/info/exclude 2>/dev/null || echo '.night-shift/' >> .git/info/exclude
    ```
-   This MUST happen before `mkdir -p .night-shift` or any PID file write, otherwise
-   `git status` will report `.night-shift/` as untracked and the clean-tree check will fail.
+   This MUST happen before `mkdir -p .night-shift`, otherwise `git status` will
+   report `.night-shift/` as untracked and the clean-tree check will fail.
 
-4. **Prevent the computer from sleeping (macOS):**
-
-   Use a **bounded-timeout caffeinate** that auto-expires if the agent dies. This is
-   critical — an unbounded caffeinate left behind keeps the Mac awake forever.
-
-   On non-macOS systems (no `caffeinate` command), skip this step entirely.
-
-   **Starting caffeinate** (stale state is already cleaned up, so `.night-shift/` is
-   guaranteed to not exist at this point):
-   ```bash
-   mkdir -p .night-shift
-   caffeinate -i -t 2700 &
-   echo $! > .night-shift/caffeinate.pid
-   test -s .night-shift/caffeinate.pid || echo "WARNING: failed to save caffeinate PID"
-   ```
-
-   Tell the user: "Starting `caffeinate` to prevent your Mac from sleeping during
-   the night shift. It auto-expires every 45 minutes and gets renewed throughout the
-   run. If I crash or get disconnected, your Mac will resume normal sleep within 45
-   minutes at most."
-
-   **Renewal — the `caffeinate-renew` pattern:**
-   Run this before every potentially long phase: Step 1 (Plan), Step 3 (Execute),
-   Step 4 (each Code Review round), and Step 5 (Validate). This means caffeinate
-   is refreshed multiple times per goal, not just at goal boundaries.
-
-   ```bash
-   OLD_PID=$(cat .night-shift/caffeinate.pid 2>/dev/null)
-   if [ -n "$OLD_PID" ] && ps -p "$OLD_PID" -o comm= 2>/dev/null | grep -q caffeinate; then
-     kill "$OLD_PID" 2>/dev/null
-   fi
-   caffeinate -i -t 2700 &
-   echo $! > .night-shift/caffeinate.pid
-   ```
-
-   The `ps -p ... -o comm=` check ensures we only kill a process that is actually
-   `caffeinate` — not an unrelated process that reused the PID after the old lease
-   expired.
-
-   **Cleanup — the `caffeinate-stop` pattern:**
-   Run on any controlled exit (normal completion, early stop, drift failure):
-   ```bash
-   OLD_PID=$(cat .night-shift/caffeinate.pid 2>/dev/null)
-   if [ -n "$OLD_PID" ] && ps -p "$OLD_PID" -o comm= 2>/dev/null | grep -q caffeinate; then
-     kill "$OLD_PID" 2>/dev/null
-   fi
-   rm -f .night-shift/caffeinate.pid
-   ```
-
-   **On uncontrolled exit** (crash, OOM, context exhaustion, user kills agent):
-   caffeinate auto-expires after at most 45 minutes. No manual intervention needed.
-
-5. Record the current branch as `BRANCH`: `git branch --show-current`
-6. Record the current commit as `BASE_COMMIT`: `git rev-parse HEAD`
-7. Ensure the working tree is clean: `git status --short`
+4. Record the current branch as `BRANCH`: `git branch --show-current`
+5. Record the current commit as `BASE_COMMIT`: `git rev-parse HEAD`
+6. Ensure the working tree is clean: `git status --short`
    - If there are uncommitted changes, ask the user to commit or stash them before starting.
      This is the only other question allowed besides goal confirmation.
-8. Create the state directory: `mkdir -p .night-shift/`
-9. Initialize the run state file (see "Run State Persistence" below)
+7. Create the state directory: `mkdir -p .night-shift/`
+8. Initialize the run state file (see "Run State Persistence" below)
 
 **State files live in `.night-shift/`** in the repo root. This means:
 - The user can open `.night-shift/state.json` or `.night-shift/plan.md` in their
@@ -588,8 +529,7 @@ ROLLBACK_OK=$?
 **Rollback verification is a hard stop.** If `ROLLBACK_OK` is non-zero (rollback
 incomplete), the run is over:
 1. Do NOT continue to the next goal
-2. Run the `caffeinate-stop` pattern
-3. Print a terminal-only summary explaining that rollback failed and the working
+2. Print a terminal-only summary explaining that rollback failed and the working
    tree may contain partial changes from the blocked goal
 4. The human must investigate
 
@@ -633,8 +573,6 @@ When all goals are done (or the user says "end night shift"):
    `git add docs/night-shift/YYYY-MM-DD-HHMM-handoff.md && git commit -m "docs: night shift handoff YYYY-MM-DD-HHMM"`
 7. Update `expected_head` in state file after the handoff commit
 7. Clean up:
-   - Run the `caffeinate-stop` pattern (read PID from `.night-shift/caffeinate.pid`,
-     validate, kill)
    - Delete the state directory: `rm -rf .night-shift/`
 
 Use this structure:
