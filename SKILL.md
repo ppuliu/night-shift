@@ -330,14 +330,14 @@ check each other's work — neither trusts its own output without the other vali
 │     └─→ Write plan to .night-shift/plan.md           │
 │                                                      │
 │  2. Adversarial Review (Codex)                       │
-│     └─→ /codex:adversarial-review on plan file       │
+│     └─→ /codex:adversarial-review on plan            │
 │     └─→ If issues found → revise plan → re-review    │
 │                                                      │
 │  3. Execute                                          │
 │     └─→ Implement the plan                           │
 │                                                      │
 │  4. Code Review (Codex)                              │
-│     └─→ /codex:review --scope working-tree           │
+│     └─→ /codex:review on working-tree changes        │
 │     └─→ If issues found → fix → re-review            │
 │     └─→ Repeat until Codex says clean                │
 │                                                      │
@@ -366,15 +366,15 @@ The plan must be a file because Codex needs something concrete to review in Step
 
 ### Step 2: Adversarial Review via Codex
 
-Have Codex challenge your plan. Because the plan is a file in the working tree,
-Codex can inspect it:
+Have Codex challenge your plan in adversarial mode:
 
 ```
-/codex:adversarial-review --scope working-tree
-Focus: Review the implementation plan in .night-shift/plan.md for [goal title].
-Challenge design choices, identify potential issues, and suggest alternatives
-if the approach has weaknesses.
+/codex:adversarial-review --wait --scope working-tree
 ```
+
+This runs Codex in adversarial mode, questioning the design choices, tradeoffs, and
+assumptions in your plan. Use `--wait` so the night shift agent blocks until the
+review completes (do not run in background during night shift).
 
 Read the review carefully. If Codex raises valid concerns:
 - Revise `.night-shift/plan.md` to address them
@@ -404,20 +404,30 @@ Key rules during execution:
   record it in the state file's `decisions_made` array.
 - **Stay in scope.** Don't refactor unrelated code. Don't add features beyond the goal.
 - **Write tests.** Every goal should include test coverage for the changes made.
+- **Subagent delegation is allowed for Step 3 ONLY.** You may use a subagent to write
+  code and tests for speed, but the subagent prompt MUST include:
+  - "Do NOT run `git add` or `git commit`"
+  - "Only create/modify files listed in the plan"
+  - "Report all files changed when done"
+  The night shift agent MUST then independently run Steps 4-7 itself — drift checks,
+  Codex code review, validation (including browser verification for UI), and commit.
+  A subagent's "done" report is NOT evidence of quality. The Codex review is.
+  **Do NOT delegate Steps 1, 2, 4, 5, 6, or 7 to subagents.** These steps require
+  the night shift agent to maintain the execution loop's integrity.
 
 ### Step 4: Code Review via Codex
 
 **Run the drift check** before the first review round.
 
-After implementation, have Codex review the actual code:
+After implementation, have Codex review the actual code changes:
 
 ```
-/codex:review --scope working-tree
+/codex:review --wait --scope working-tree
 ```
 
 This is the quality gate. Read the review and act on it:
 
-- **Issues found → fix them → re-run `/codex:review`**
+- **Issues found → fix them → re-run `/codex:review --wait --scope working-tree`**
 - **Repeat until Codex reports no significant issues**
 - Maximum 3 review cycles per goal.
 
@@ -432,11 +442,15 @@ file with the outstanding issues, and move to the next goal.
 Before marking the goal complete:
 1. Run the full test suite — all tests must pass
 2. Verify the deliverables listed in the goal are actually delivered
-3. Check that no unintended files were modified
+3. **For UI goals** (templates, dashboard pages, CSS, frontend components): verification
+   MUST include opening the page in a browser (via playwright, browse tool, or preview)
+   and taking a screenshot as evidence. "Tests pass" is NOT sufficient for UI work —
+   you must visually confirm the page renders correctly.
+4. Check that no unintended files were modified
 
 **Validation failure is a hard stop.** If tests fail:
 - Attempt to fix the failures (1 attempt)
-- Re-run `/codex:review` on the fixes
+- Re-run `/codex:review --wait --scope working-tree` on the fixes
 - Re-run tests
 - If tests still fail after 1 fix attempt, perform a **scoped rollback** (see below).
   - Mark the goal as `blocked` in the state file
@@ -449,6 +463,11 @@ a branch where every commit is green, even if fewer goals were completed.
 ### Step 6: Commit
 
 **Run the drift check** before committing.
+
+**Pre-commit gate:** Before staging anything, read `.night-shift/state.json` and verify
+the current goal has `codex_review_status: "clean"`. If the status is `"skipped"`,
+`"unavailable"`, or anything other than `"clean"`, the goal CANNOT be committed — it
+must either go through Codex review or be reverted. This is a hard gate.
 
 **Stage only goal deliverables.** Use targeted `git add` with specific file paths:
 ```bash
@@ -545,17 +564,24 @@ happened. **Stop the run** immediately (same hard-stop path as above).
 
 ## Codex Unavailability
 
-If `/codex:adversarial-review` or `/codex:review` fails to execute (command not found,
-timeout, runtime error):
+**"Unavailable" means Codex returned a technical error** — command not found, timeout,
+or runtime crash. It does NOT mean you decided to skip it. Choosing not to run Codex
+is a protocol violation, not an unavailability event. If you skip Step 2 or Step 4
+by choice, the goal MUST be reverted.
+
+If Codex is genuinely unavailable (technical error):
 
 - **For adversarial review (Step 2):** Proceed without it — the adversarial review is
   valuable but not the primary quality gate. Note in the state file that adversarial
-  review was skipped.
+  review was skipped and include the error message.
 - **For code review (Step 4):** This is the primary quality gate. If Codex is unavailable:
   - Perform a self-review: re-read all changed files with fresh eyes
   - Run the test suite as the minimum quality bar
-  - Note in the state file that Codex review was unavailable
+  - Note in the state file that Codex review was unavailable, with the error message
   - The handoff note must prominently flag that these changes were not Codex-reviewed
+
+No other reason justifies skipping Codex review — not "straightforward changes", not
+"UI-only work", not "tests pass". The review loop is the quality gate. Run it.
 
 ## Writing the Handoff Note
 
