@@ -148,11 +148,10 @@ actually cares about right now.
 
 ### Phase 2: Goal Proposal
 
-The night shift should keep the agent productively busy for **at least 5 hours**.
-Propose **3 goals by default**. If the estimated total effort for 3 goals is under
-5 hours, propose additional goals (4, 5, or more) until the total reaches at least
-5 hours. There is no upper limit on goal count — what matters is filling the time
-with meaningful work.
+The night shift should keep the agent productively busy for **at least 8 hours**.
+Propose **5 goals by default**. If the estimated total effort for 5 goals is under
+8 hours, propose additional goals until the total reaches at least 8 hours. There
+is no upper limit on goal count — what matters is filling the time with meaningful work.
 
 Present goals to the user in this format:
 
@@ -176,7 +175,7 @@ I've scanned the session and codebase. Here's what I propose to work on tonight:
 ### Goal 3: [Title]
 ...
 
-(additional goals if needed to fill 5+ hours)
+(additional goals if needed to fill 8+ hours)
 
 Want me to proceed with these, or would you like to modify them?
 ```
@@ -384,6 +383,10 @@ Read the review carefully. If Codex raises valid concerns:
 
 If Codex approves or raises only minor points, proceed to execution.
 
+**IMPORTANT: Step 2 and Step 4 are NOT interchangeable.** Step 2 reviews the *plan*
+before you write code. Step 4 reviews the *actual code* you wrote. Running Step 2 does
+NOT satisfy Step 4. You must run both, every time. They review different artifacts.
+
 ### Step 3: Execute
 
 **Run the drift check** (see "Drift Check" section above).
@@ -415,27 +418,54 @@ Key rules during execution:
   **Do NOT delegate Steps 1, 2, 4, 5, 6, or 7 to subagents.** These steps require
   the night shift agent to maintain the execution loop's integrity.
 
-### Step 4: Code Review via Codex
+### Step 4: Code Review Loop (Codex)
 
 **Run the drift check** before the first review round.
 
-After implementation, have Codex review the actual code changes:
+This is the quality gate. It runs AS MANY TIMES AS NEEDED until Codex says the code
+is clean. There is no shortcut. You MUST run the actual `/codex:review` command —
+checking the output yourself and deciding "it's fine" is NOT the same as Codex saying
+it's clean.
+
+**The review loop algorithm:**
 
 ```
-/codex:review --wait --scope working-tree
+REVIEW_ROUND = 0
+while REVIEW_ROUND < 3:
+    REVIEW_ROUND += 1
+
+    Run: /codex:review --wait
+    Save the Codex output summary to state file.
+
+    Parse the output:
+    - If NO P1 or P2 findings:
+        → Set codex_review_status = "clean"
+        → Set codex_review_command_ran = true
+        → Set codex_review_evidence = <paste verdict line from output>
+        → BREAK (exit loop, proceed to Step 5)
+    - If P1 or P2 findings exist:
+        → Fix each finding
+        → Update state file with round number and findings
+        → CONTINUE (loop back, re-run /codex:review on the fixes)
+
+If REVIEW_ROUND == 3 and still has P1/P2 findings:
+    → HARD STOP: revert goal via scoped rollback, mark as blocked
 ```
 
-This is the quality gate. Read the review and act on it:
+**Every fix you make MUST be re-reviewed.** The loop only exits when Codex reports no
+significant issues, or after 3 failed rounds (which triggers a revert). There is no
+"I looked at the findings and they don't apply" escape — fix them or revert.
 
-- **Issues found → fix them → re-run `/codex:review --wait --scope working-tree`**
-- **Repeat until Codex reports no significant issues**
-- Maximum 3 review cycles per goal.
+**What counts as "clean":** The Codex review output contains no `[P1]` or `[P2]` markers.
+Minor observations or style notes that aren't flagged as P1/P2 do not block.
 
-The goal is: **Codex says the code is clean before you move to the next goal.**
+**What does NOT count as running Step 4:**
+- Citing a prior Step 2 adversarial review (that reviewed the plan, not the code)
+- Claiming the changes are "too simple to need review"
+- Saying "tests pass so it's fine"
+- Running the review on a different goal's changes
 
-If Codex still finds issues after 3 rounds, this is a **hard stop for this goal**.
-Perform a **scoped rollback** (see below), mark the goal as `blocked` in the state
-file with the outstanding issues, and move to the next goal.
+Step 4 reviews THIS goal's code changes. Run the command. Read the output. Act on it.
 
 ### Step 5: Validate
 
@@ -465,9 +495,14 @@ a branch where every commit is green, even if fewer goals were completed.
 **Run the drift check** before committing.
 
 **Pre-commit gate:** Before staging anything, read `.night-shift/state.json` and verify
-the current goal has `codex_review_status: "clean"`. If the status is `"skipped"`,
-`"unavailable"`, or anything other than `"clean"`, the goal CANNOT be committed — it
-must either go through Codex review or be reverted. This is a hard gate.
+the current goal has ALL of these:
+- `codex_review_status: "clean"` — no other value is accepted
+- `codex_review_command_ran: true` — proves the command was actually executed
+- `codex_review_evidence` — contains the verdict line from the Codex output
+
+If ANY of these are missing or wrong, the goal CANNOT be committed — it must go through
+Codex review or be reverted. This is a hard gate. There are no exceptions for "simple
+changes", "UI-only work", or "tests pass".
 
 **Stage only goal deliverables.** Use targeted `git add` with specific file paths:
 ```bash
