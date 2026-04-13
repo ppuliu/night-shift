@@ -148,19 +148,26 @@ actually cares about right now.
 
 ### Phase 2: Goal Proposal
 
-Present exactly **3 goals** to the user in this format:
+The night shift should keep the agent productively busy for **at least 5 hours**.
+Propose **3 goals by default**. If the estimated total effort for 3 goals is under
+5 hours, propose additional goals (4, 5, or more) until the total reaches at least
+5 hours. There is no upper limit on goal count — what matters is filling the time
+with meaningful work.
+
+Present goals to the user in this format:
 
 ```
 ## Night Shift Goals
 
 Branch: `BRANCH` (starting from commit `BASE_COMMIT`)
+Estimated total runtime: ~[N] hours
 
 I've scanned the session and codebase. Here's what I propose to work on tonight:
 
 ### Goal 1: [Title]
 - **What:** [1-2 sentence description]
 - **Why:** [Why this matters / what it unblocks]
-- **Estimated effort:** [Small/Medium/Large — roughly 15min/30min/60min+]
+- **Estimated effort:** [time estimate, e.g. ~45min, ~2hrs]
 - **Deliverables:** [Concrete outputs: files created, tests passing, etc.]
 
 ### Goal 2: [Title]
@@ -169,8 +176,19 @@ I've scanned the session and codebase. Here's what I propose to work on tonight:
 ### Goal 3: [Title]
 ...
 
+(additional goals if needed to fill 5+ hours)
+
 Want me to proceed with these, or would you like to modify them?
 ```
+
+**Effort estimation guidelines:**
+- Factor in the full execution loop per goal: planning, adversarial review, implementation,
+  code review rounds, validation, and commit overhead.
+- A "Small" goal (simple bug fix, small feature) typically takes ~30-60 min through the
+  full loop. A "Medium" goal (new module, significant refactor) takes ~1-2 hrs. A "Large"
+  goal (major feature, cross-cutting change) takes ~2-4 hrs.
+- When in doubt, estimate conservatively (higher) — it's better to finish early than to
+  run out of goals mid-shift.
 
 **Goal selection principles:**
 - **Conversation history is king.** Prioritize unfinished work, stated next-steps, and
@@ -187,7 +205,7 @@ Want me to proceed with these, or would you like to modify them?
 This is the **last** point where you wait for user input. After this, you are fully autonomous.
 
 Accept the user's response:
-- "looks good" / "go" / "yes" → proceed with all 3 goals as proposed
+- "looks good" / "go" / "yes" → proceed with all goals as proposed
 - Modifications → adjust goals accordingly
 - Removal → drop goals, proceed with remainder
 
@@ -442,7 +460,7 @@ Commit with a clear message:
 ```
 feat: [goal title]
 
-Night shift goal [N/3]: [description]
+Night shift goal [N/total]: [description]
 - [key change 1]
 - [key change 2]
 ```
@@ -625,7 +643,7 @@ Night shift complete! Handoff note: docs/night-shift/YYYY-MM-DD-HHMM-handoff.md
 Branch: BRANCH ([N] new commits since BASE_COMMIT)
 Run `git log BASE_COMMIT..HEAD --oneline` to review commits.
 
-Completed: [N/3] goals
+Completed: [N/total] goals
 - ✅ Goal 1: [title]
 - ✅ Goal 2: [title]
 - ⚠️ Goal 3: [title] (blocked — see handoff for details)
