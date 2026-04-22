@@ -38,10 +38,12 @@ the objective?" not "is this measurable?".
 First, detect whether any active shift exists:
 
 ```bash
-# Active = any .night-shift/runs/*/state.json with status == "running"
-ACTIVE_RUNS=$(find .night-shift/runs -maxdepth 2 -name state.json 2>/dev/null \
-  | xargs -I {} sh -c 'jq -r ".status + \" \" + .run_id + \" \" + input_filename" "$1" 2>/dev/null' _ {} \
-  | awk '$1 == "running"')
+# Active = any .night-shift/runs/*/state.json with status == "running".
+# No shell variables named `status` — zsh makes `$status` read-only.
+for f in .night-shift/runs/*/state.json; do
+  [ -e "$f" ] || continue
+  [ "$(jq -r .status "$f" 2>/dev/null)" = "running" ] && echo "$f"
+done
 ```
 
 If there are multiple active runs (shouldn't happen normally), pick the most
@@ -165,18 +167,21 @@ append `Z`.
 
 ```bash
 RUN_ID=$(date +%Y-%m-%d-%H%M)                              # local time
-STARTED_AT=$(date +%Y-%m-%dT%H:%M:%S%z)                    # e.g. 2026-04-19T08:47:00-0700
 RUN_DIR=".night-shift/runs/${RUN_ID}"
 mkdir -p "$RUN_DIR/key results"
 ```
 
-Write initial state to `$RUN_DIR/state.json`:
+Write initial state to `$RUN_DIR/state.json`. Note `started_at` is **null** at
+this point — pre-flight (bypass-permissions Q, branch Q, objective Q, etc.)
+is interactive, not autonomous work. The shift clock starts at the handoff
+banner (see §Objective Confirmation), so elapsed-time and the 8h hard cap
+measure only the autonomous portion.
 
 ```json
 {
   "run_id": "2026-04-19-0847",
   "status": "running",
-  "started_at": "2026-04-19T08:47:00-0700",
+  "started_at": null,
   "mode": "git",
   "cwd": "/abs/path/to/project",
   "skill_dir": "/Users/.../.claude/skills/night-shift",
@@ -323,6 +328,16 @@ want. Use emojis and dividers so it stands out from ordinary output:
 This banner is the ONLY place where emojis / ASCII decoration are expected —
 it's intentional, to give the user a clear visual handoff. After this
 message, the agent enters autonomous mode. No more questions until handoff.
+
+**Immediately after emitting the banner, set `started_at` in state.json.**
+This is the shift's true start — all elapsed-time computations and the 8-hour
+hard cap measure from here, not from pre-flight:
+
+```bash
+STARTED_AT=$(date +%Y-%m-%dT%H:%M:%S%z)
+jq --arg t "$STARTED_AT" '.started_at = $t' "$RUN_DIR/state.json" \
+  > "$RUN_DIR/state.json.tmp" && mv "$RUN_DIR/state.json.tmp" "$RUN_DIR/state.json"
+```
 
 ## Run State Persistence
 
@@ -518,7 +533,15 @@ to §End Conditions (consensus path) instead.
 
 ### Outer B: Codex Key Result Approval
 
-Codex gates each key result. Run an adversarial review on the proposal:
+Codex gates each key result. Run an adversarial review on the proposal.
+
+**Pass the full `state.json` to Codex verbatim.** Do NOT paraphrase the
+objective or summarize completed key results — paraphrasing loses the exact
+wording of the user-approved objective and the shape of what's already shipped,
+which is exactly the information Codex needs to judge whether the proposal
+is worth doing or would over-engineer. Include both `state.json` and
+`proposed-key-result.md` in the review context (e.g. quote their contents
+inline in the prompt, or reference both file paths explicitly).
 
 ```
 /codex:adversarial-review --wait --scope working-tree
@@ -907,12 +930,17 @@ This prevents the agent from ending early on its own.
 key result would over-engineer or over-optimize the objective:
 
 1. Write a "done reasoning" file to `$RUN_DIR/end-consensus-draft.md`:
-  - What the objective asked for
-  - Summary of completed key results and what they delivered
+  - The verbatim objective from `state.objective` (do NOT paraphrase)
+  - Completed key results as bullet points copied from `state.key_results[]`
+  (titles and outcomes as recorded, not summarized in new words)
   - Why any plausible next key result would be over-engineering or
   over-optimizing (be specific — enumerate the ideas you considered)
   - Recommended remaining work, if any, for a future shift
-2. Run Codex adversarial review on the draft:
+2. Run Codex adversarial review on the draft. **Pass the full `state.json`
+   to Codex verbatim** alongside the draft — the "done vs keep going"
+   decision is only valid if Codex sees the literal objective and the complete
+   key-result history. Paraphrasing is forbidden here; it was the specific
+   failure mode that caused Codex to approve a premature end in an earlier run.
   ```
    /codex:adversarial-review --wait --scope working-tree
   ```
