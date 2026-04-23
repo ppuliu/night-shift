@@ -1,0 +1,15 @@
+{
+  "name": "night-shift",
+  "owner": {
+    "name": "Honglei Liu",
+    "url": "https://github.com/ppuliu"
+  },
+  "plugins": [
+    {
+      "name": "night-shift",
+      "source": "./",
+      "description": "Autonomous overnight agent that keeps coding while the human is away.",
+      "version": "1.0.0"
+    }
+  ]
+}

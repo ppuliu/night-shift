@@ -2,13 +2,13 @@
 
 > Step away for the night.
 >
-> [Claude Code](https://claude.com/claude-code) keeps grinding.
+> Claude Code keeps grinding.
 >
 > Wake up to well planned, committed, tested, reviewed work.
 
 Night Shift is a Claude Code skill that turns a normal Claude Code session into an autonomous overnight development agent. You approve one thing — an **objective** — then walk away. The agent plans, implements, and commits work against a feature branch for up to 8 hours.
 
-When [OpenAI Codex](https://github.com/openai/codex) is available, every commit is gated by an independent review from a second, separately-prompted LLM. When it isn't, the agent falls back to a clearly-marked self-review and keeps working — you lose the dual-LLM guarantee but not the loop.
+When OpenAI Codex is available, every commit is gated by an independent review from a second, separately-prompted LLM. When it isn't, the agent falls back to a clearly-marked self-review and keeps working — you lose the dual-LLM guarantee but not the loop.
 
 ```
 ═══════════════════════════════════════════════════════════════
@@ -59,7 +59,14 @@ If Codex rejects three candidate key results in a row, the shift ends on consens
 
 ## Install
 
-The skill is a directory under your user-level Claude Code skills path:
+From inside Claude Code (recommended):
+
+```
+/plugin marketplace add ppuliu/night-shift
+/plugin install night-shift@night-shift
+```
+
+Or clone directly into your skills directory:
 
 ```bash
 git clone https://github.com/ppuliu/night-shift.git ~/.claude/skills/night-shift
