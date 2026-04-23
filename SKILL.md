@@ -98,7 +98,36 @@ with the flag and trigger night shift again.
 
 If the user says no → abort with the above instructions. If yes → continue.
 
-### 2. Git repo detection
+### 2. `jq` dependency
+
+Every subsequent step reads/writes `state.json` with `jq`. If it is not on
+PATH, install it via the platform's package manager before proceeding:
+
+```bash
+if ! command -v jq >/dev/null 2>&1; then
+  if command -v brew >/dev/null 2>&1; then
+    brew install jq
+  elif command -v apt-get >/dev/null 2>&1; then
+    sudo apt-get update && sudo apt-get install -y jq
+  elif command -v dnf >/dev/null 2>&1; then
+    sudo dnf install -y jq
+  elif command -v yum >/dev/null 2>&1; then
+    sudo yum install -y jq
+  elif command -v pacman >/dev/null 2>&1; then
+    sudo pacman -S --noconfirm jq
+  else
+    echo "Could not auto-install jq. Please install it and retry." >&2
+    exit 1
+  fi
+fi
+```
+
+On Linux this may prompt for a sudo password. Pre-flight is interactive (the
+user is still present), so a password prompt is acceptable here — it would
+not be acceptable once the autonomous loop starts. After installing, re-check
+`command -v jq` and abort with a clear message if it still isn't available.
+
+### 3. Git repo detection
 
 Run `git rev-parse --is-inside-work-tree` to determine if the cwd is inside a
 git repo.
@@ -114,7 +143,7 @@ limitations. Warn the user once and ask for confirmation before proceeding:
   ```
   If yes → continue in degrade mode. If no → abort.
 
-### 3. Gitignore entry (git mode only)
+### 4. Gitignore entry (git mode only)
 
 Ensure `.night-shift/` is ignored. Read `.gitignore` (create if missing) and
 append `.night-shift/` on its own line if not already present. This is a one-line
@@ -129,7 +158,7 @@ fi
 Do NOT use `.git/info/exclude` — we prefer the tracked `.gitignore` for
 collaborator consistency and clarity.
 
-### 4. Branch check (git mode only)
+### 5. Branch check (git mode only)
 
 Run `git branch --show-current`. Must not be `main` or `master`.
 
@@ -142,7 +171,7 @@ run `git checkout -b <name>` and proceed.
 
 Record the branch as `BRANCH` and the current commit as `BASE_COMMIT`.
 
-### 5. Clean working tree (git mode only)
+### 6. Clean working tree (git mode only)
 
 Run `git status --short`. If there are uncommitted changes (other than the
 `.gitignore` line we just added), ask the user to commit or stash them. This is
@@ -151,13 +180,13 @@ the only other permitted question besides goal confirmation.
 If the `.gitignore` change is the only dirty file, commit it automatically
 with message `chore: ignore .night-shift/` before proceeding.
 
-### 6. Active-shift guard
+### 7. Active-shift guard
 
 This should have been handled in §Routing, but guard against races: re-scan
 `.night-shift/runs/*/state.json` and verify no `status: "running"` entry exists.
 If one appeared between routing and here, loop back to §Stop-Resume-Abandon.
 
-### 7. Initialize this run
+### 8. Initialize this run
 
 **All timestamps in this skill are LOCAL time, not UTC.** Run folders and
 handoffs are read by the human on their wall clock; UTC makes "when did this
@@ -199,7 +228,7 @@ measure only the autonomous portion.
 
 (In degrade mode: `"mode": "no-git"`, omit `branch`, `base_commit`, `expected_head`.)
 
-### 8. Locate INVARIANTS.md in the skill directory
+### 9. Locate INVARIANTS.md in the skill directory
 
 The non-negotiable rules live in `INVARIANTS.md`, a sibling of this SKILL.md
 in the skill's install directory. The agent does NOT copy it into the run

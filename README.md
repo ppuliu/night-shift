@@ -1,6 +1,8 @@
 # Night Shift
 
-> Step away for the night. [Claude Code](https://claude.com/claude-code) keeps coding.
+> Step away for the night.
+>
+> [Claude Code](https://claude.com/claude-code) keeps grinding.
 >
 > Wake up to well planned, committed, tested, reviewed work.
 
@@ -53,10 +55,7 @@ If Codex rejects three candidate key results in a row, the shift ends on consens
 
 - **Claude Code** launched with `--dangerously-skip-permissions` in a directory you trust. Without it, the autonomous loop stalls on permission prompts.
 - **Git** (recommended). Outside a git repo, Night Shift runs in a graceful-degrade mode with no commits, no rollback, no drift protection.
-- **`jq`** on `PATH`.
 - **OpenAI [Codex CLI](https://github.com/openai/codex)** (recommended). When present, you get the dual-LLM review loop and the ability to end on consensus. When absent, Claude self-reviews with explicit `CODEX UNAVAILABLE` markers on every artifact, the handoff flags those tasks prominently, and the shift runs to the 8h cap.
-
-Tested on macOS (zsh) and Linux.
 
 ## Install
 
@@ -110,6 +109,7 @@ Every verdict is a real file on disk. Previous runs are never modified.
 
 ## Safety model
 
+
 | Failure mode                           | How Night Shift prevents it                                                  |
 | -------------------------------------- | ---------------------------------------------------------------------------- |
 | Agent commits broken code              | Full test suite runs before every commit; failures trigger scoped rollback   |
@@ -122,15 +122,18 @@ Every verdict is a real file on disk. Previous runs are never modified.
 | Agent pushes to remote                 | The skill never calls `git push`                                             |
 | Scope creeps beyond objective          | Every key result gated on "does this serve the objective?"                   |
 
-The full ruleset is in [`INVARIANTS.md`](INVARIANTS.md); the full execution spec is in [`SKILL.md`](SKILL.md).
+
+The full ruleset is in `[INVARIANTS.md](INVARIANTS.md)`; the full execution spec is in `[SKILL.md](SKILL.md)`.
 
 ## Commands
+
 
 | Trigger                                                          | Action                                              |
 | ---------------------------------------------------------------- | --------------------------------------------------- |
 | `/night-shift`                                                   | Start a shift, or Stop/Resume/Abandon an active one |
 | `start night shift`, `going to sleep`, `take over for the night` | Same as `/night-shift`                              |
 | `stop night shift`, `end night shift`, `wrap up`                 | Run the end procedure on the active shift           |
+
 
 ## Limitations
 
@@ -139,6 +142,3 @@ The full ruleset is in [`INVARIANTS.md`](INVARIANTS.md); the full execution spec
 - **Single session per repo.** External commits to the feature branch trigger drift protection and stop the run cleanly.
 - **Without Codex, no early exit.** The shift runs to the 8h cap and every task's review is explicitly self-reviewed.
 
-## License
-
-MIT — see [`LICENSE`](LICENSE).
