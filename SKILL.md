@@ -543,9 +543,16 @@ is worth doing or would over-engineer. Include both `state.json` and
 `proposed-key-result.md` in the review context (e.g. quote their contents
 inline in the prompt, or reference both file paths explicitly).
 
+```bash
+# $PROMPT = state.json contents (verbatim) + proposed-key-result.md, bundled
+#           as a single adversarial-review prompt describing what to evaluate.
+# $OUT    = $RUN_DIR/key-results/<G>/codex-approval.txt
+echo "$PROMPT" | codex exec - -s read-only -c 'model_reasoning_effort="high"' 2>&1 \
+  | tee "$OUT" >/dev/null
 ```
-/codex:adversarial-review --wait --scope working-tree
-```
+
+Invoke via the Bash tool with `timeout: 600000` (10 min). `codex exec` has a
+5-minute internal default and high-effort reviews occasionally need longer.
 
 Save the full output to `$RUN_DIR/key-results/<G>/codex-approval.txt` and
 record the path in `state.key_results[G].codex_approval_file`. The review must
@@ -584,8 +591,11 @@ average so estimates remain useful.
 
 ### Outer D: Decomposition Adversarial Review
 
-```
-/codex:adversarial-review --wait --scope working-tree
+```bash
+# $PROMPT = state.json (verbatim) + current-decomp.md.
+# $OUT    = $RUN_DIR/key-results/<G>/decomp-adversarial.txt
+echo "$PROMPT" | codex exec - -s read-only -c 'model_reasoning_effort="high"' 2>&1 \
+  | tee "$OUT" >/dev/null
 ```
 
 Save the full output to `$RUN_DIR/key-results/<G>/decomp-adversarial.txt` and
@@ -651,8 +661,11 @@ Write a detailed implementation plan for THIS task to
 
 ### Inner 2: Task Plan Adversarial Review
 
-```
-/codex:adversarial-review --wait --scope working-tree
+```bash
+# $PROMPT = state.json (verbatim) + current-decomp.md + current-plan.md.
+# $OUT    = $RUN_DIR/key-results/<G>/tasks/<S>/plan-adversarial.txt
+echo "$PROMPT" | codex exec - -s read-only -c 'model_reasoning_effort="high"' 2>&1 \
+  | tee "$OUT" >/dev/null
 ```
 
 Save the full output to `$RUN_DIR/key-results/<G>/tasks/<S>/plan-adversarial.txt`
@@ -706,18 +719,20 @@ task's work.
 
 **Run the drift check** before the first review round.
 
-You MUST run the actual `/codex:review` command. Checking output yourself and
+You MUST run the actual `codex review` CLI. Checking output yourself and
 deciding "it's fine" is NOT the same as Codex saying it's clean.
 
 ```
-REVIEW_ROUND = 0
+REVIEW_ROUND      = 0
 CODEX_OUTPUT_FILE = "$RUN_DIR/key-results/<G>/tasks/<S>/code-review.txt"
+BASE_SHA          = <the task's start_commit from state.json>
 
 while REVIEW_ROUND < 3:
     REVIEW_ROUND += 1
-    Run: /codex:review --wait
-    # SAVE the full review output to CODEX_OUTPUT_FILE.
-    # The pre-commit gate will verify this file exists and contains a verdict.
+    # Invoke via the Bash tool with timeout: 600000 (10 min):
+    codex review --base $BASE_SHA -c 'model_reasoning_effort="high"' 2>&1 \
+      | tee $CODEX_OUTPUT_FILE
+    # The pre-commit gate will verify CODEX_OUTPUT_FILE exists and contains a verdict.
 
     Parse the output:
     - NO P1 or P2 findings:
@@ -765,8 +780,8 @@ Before marking the task complete:
 **Validation failure is a hard stop.** If tests fail:
 
 - Attempt to fix (1 attempt)
-- Re-run `/codex:review --wait --scope working-tree` on the fixes
-(updating `code-review.txt`)
+- Re-run `codex review --base $BASE_SHA -c 'model_reasoning_effort="high"' 2>&1 | tee $CODEX_OUTPUT_FILE`
+on the fixes
 - Re-run tests
 - If tests still fail:
   - **Git mode:** scoped rollback of this task, mark `blocked`, record
@@ -941,8 +956,11 @@ key result would over-engineer or over-optimize the objective:
    decision is only valid if Codex sees the literal objective and the complete
    key-result history. Paraphrasing is forbidden here; it was the specific
    failure mode that caused Codex to approve a premature end in an earlier run.
-  ```
-   /codex:adversarial-review --wait --scope working-tree
+  ```bash
+  # $PROMPT = state.json (verbatim) + end-consensus-draft.md.
+  # $OUT    = $RUN_DIR/end-consensus.txt
+  echo "$PROMPT" | codex exec - -s read-only -c 'model_reasoning_effort="high"' 2>&1 \
+    | tee "$OUT" >/dev/null
   ```
 3. Save Codex's response to `$RUN_DIR/end-consensus.txt`. Update
 
