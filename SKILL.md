@@ -591,10 +591,13 @@ objective, or would it over-engineer / over-optimize?**
 - **Approved** (no P1/P2 findings contesting the key result's value): mark
 `status: "in_progress"`, record `started_at`, proceed to C.
 - **Rejected** (Codex contests the key result): mark `status: "codex-rejected"`, record Codex's reasoning in state. Loop back to A with
-a different proposal. Maximum 3 consecutive rejections — if Codex rejects
-3 candidates in a row, treat it as a strong signal the objective is done
-and go to §End Conditions (consensus path) with those 3 rejections as
-consensus evidence.
+a different proposal. Rejections never auto-terminate the shift — if you find
+yourself unable to propose a key result Codex will accept, that's a signal
+to invoke §End Conditions (Condition 2) yourself: write `end-consensus-draft.md`,
+include the rejected proposals and Codex's reasoning as evidence, and let
+Codex's re-review on the full draft decide whether the shift ends or you
+adopt Codex's counter-proposal. Until then, keep iterating or wait for
+the 8h cap.
 
 If Codex is unavailable, the agent MUST still write a rigorous
 self-adversarial review to the same file, clearly marked
@@ -1004,10 +1007,12 @@ key result would over-engineer or over-optimize the objective:
   counter-argument Codex re-reviews). This is how Codex blocks early
   exit.
 
-**Codex-initiated path:** Outer B rejected 3 key result proposals in a row.
-This is strong evidence the objective is done — feed those 3 rejections
-into `end-consensus-draft.md` as the consensus evidence, skip Codex's
-re-review (the rejections ARE the review), and proceed to Handoff.
+There is no Codex-initiated end path. Repeated Outer B rejections are a
+signal *to the agent* that it should write `end-consensus-draft.md` and run
+the agent-initiated path above (citing the rejections as evidence) — but
+they never replace the re-review. Codex's "done" verdict only counts when
+issued against a full draft that sees the verbatim objective and complete
+key-result history.
 
 **If Codex is unavailable** during Condition 2: the agent CANNOT end on
 consensus alone. It must either (a) keep proposing key results and running

@@ -49,7 +49,7 @@ Work is organized as:
 - **Key Results** — concrete deliverables the agent proposes iteratively, each gated by Codex.
 - **Tasks** — independently committable units under each key result.
 
-If Codex rejects three candidate key results in a row, the shift ends on consensus — strong evidence the objective is satisfied.
+The agent ends the shift only when it explicitly proposes "we're done" and Codex agrees on a re-review of the full objective and key-result history. Repeated Codex rejections of new proposals are a signal to invoke that path — never a substitute for it.
 
 ## Requirements
 
