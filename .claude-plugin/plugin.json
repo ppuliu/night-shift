@@ -1,7 +1,7 @@
 {
   "name": "night-shift",
   "description": "Autonomous overnight agent that keeps coding while the human is away — small, reversible, dual-LLM-reviewed commits for up to 8 hours on a feature branch.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": {
     "name": "Honglei Liu",
     "url": "https://github.com/ppuliu"
