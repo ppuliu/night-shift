@@ -29,6 +29,9 @@ When OpenAI Codex is available, every commit is gated by an independent review f
 ═══════════════════════════════════════════════════════════════
 ```
 
+https://github.com/user-attachments/assets/d44f8393-7c73-4133-9830-d2f072579817
+
+
 ## Why
 
 Long-horizon autonomous coding agents fail in predictable ways: they hallucinate progress, paper over broken tests, escalate scope into unrelated refactors, sometimes push to `main`. Most "run it overnight" setups are one LLM grading its own homework.
@@ -59,7 +62,7 @@ The agent ends the shift only when it explicitly proposes "we're done" and Codex
 
 ## Install
 
-From inside Claude Code (recommended):
+From inside Claude Code:
 
 ```
 /plugin marketplace add ppuliu/night-shift
