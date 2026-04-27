@@ -9,7 +9,7 @@
       "name": "night-shift",
       "source": "./",
       "description": "Autonomous overnight agent that keeps coding while the human is away.",
-      "version": "1.0.0"
+      "version": "1.0.2"
     }
   ]
 }
