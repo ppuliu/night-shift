@@ -406,7 +406,6 @@ every phase transition. **This file is the source of truth — not your memory.*
           "status": "completed",
           "commit": "def5678",
           "start_commit": "abc1234",
-          "plan_adversarial_file": "key-results/1/tasks/1/plan-adversarial.txt",
           "code_review_file": "key-results/1/tasks/1/code-review.txt",
           "code_review_rounds": 1,
           "code_review_status": "clean",
@@ -493,9 +492,9 @@ Verify:
 
 Run the drift check before:
 
-- Inner 3 (Execute — before writing code)
-- Inner 4 (Code Review — before first review round)
-- Inner 6 (Commit — before staging)
+- Inner 2 (Execute — before writing code)
+- Inner 3 (Code Review — before first review round)
+- Inner 5 (Commit — before staging)
 - Any rollback operation
 - Writing the handoff note (before both file write and commit)
 
@@ -524,12 +523,11 @@ dance happens.
 │    │                                                   │           │
 │    │  0. Context refresh (read INVARIANTS.md + state)  │           │
 │    │  1. Write task plan to current-plan.md        │           │
-│    │  2. Codex adversarial-review the plan             │           │
-│    │  3. Execute                                       │           │
-│    │  4. Codex code review (loop until clean, file gate)│          │
-│    │  5. Validate (tests, deliverables, UI screenshot) │           │
-│    │  6. Commit (git mode) / Record (degrade mode)     │           │
-│    │  7. Update state → next task                  │           │
+│    │  2. Execute                                       │           │
+│    │  3. Codex code review (loop until clean, file gate)│          │
+│    │  4. Validate (tests, deliverables, UI screenshot) │           │
+│    │  5. Commit (git mode) / Record (degrade mode)     │           │
+│    │  6. Update state → next task                  │           │
 │    └──────────────────────────────────────────────────┘           │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -591,13 +589,21 @@ objective, or would it over-engineer / over-optimize?**
 - **Approved** (no P1/P2 findings contesting the key result's value): mark
 `status: "in_progress"`, record `started_at`, proceed to C.
 - **Rejected** (Codex contests the key result): mark `status: "codex-rejected"`, record Codex's reasoning in state. Loop back to A with
-a different proposal. Rejections never auto-terminate the shift — if you find
-yourself unable to propose a key result Codex will accept, that's a signal
-to invoke §End Conditions (Condition 2) yourself: write `end-consensus-draft.md`,
-include the rejected proposals and Codex's reasoning as evidence, and let
-Codex's re-review on the full draft decide whether the shift ends or you
-adopt Codex's counter-proposal. Until then, keep iterating or wait for
-the 8h cap.
+a different proposal. **The revised proposal is a NEW iteration — it
+gets a fresh `proposed-key-result.md`, a new entry in
+`state.key_results[]` (not a mutation of the rejected one), and MUST
+go through Outer B again before decomposition.** Do NOT skip Outer B
+on the assumption that "the revision addresses Codex's feedback so
+re-review is unnecessary" — that's how rejections quietly turn into
+self-approvals where the agent gets to decide which changes were
+"enough" to satisfy Codex. Codex must verify that itself. Rejections
+never auto-terminate
+the shift — if you find yourself unable to propose a key result Codex
+will accept, that's a signal to invoke §End Conditions (Condition 2)
+yourself: write `end-consensus-draft.md`, include the rejected proposals
+and Codex's reasoning as evidence, and let Codex's re-review on the
+full draft decide whether the shift ends or you adopt Codex's
+counter-proposal. Until then, keep iterating or wait for the 8h cap.
 
 If Codex is unavailable, the agent MUST still write a rigorous
 self-adversarial review to the same file, clearly marked
@@ -634,7 +640,7 @@ Save the full output to `$RUN_DIR/key-results/<G>/decomp-adversarial.txt` and
 record the path in `state.key_results[G].decomp_adversarial_file`.
 
 If Codex flags real issues (missing task, wrong order, task too
-large, dependency cycle), revise `current-decomp.md` and re-run. Max 2
+large, dependency cycle), revise `current-decomp.md` and re-run. Max 3
 revision rounds; if still contested, record disagreement in state and
 proceed.
 
@@ -661,6 +667,23 @@ were blocked — the key result is "as done as it will get").
 completed tasks across all key results. This informs future
 decomposition and end-condition estimates.
 - `rm "$RUN_DIR/current-decomp.md"` and `rm "$RUN_DIR/proposed-key result.md"`.
+- **Full skill refresh.** Re-read the entire skill spec from disk
+  before proposing the next key result. Inner 0's per-task refresh
+  only re-reads `INVARIANTS.md` (the 12 non-negotiables); the long
+  procedural spec drifts out of context after multi-hour multi-task
+  KRs, leading to skipped artifacts, wrong status values, and stale
+  prompt scaffolds. The KR boundary is the natural reset point:
+
+  ```bash
+  SKILL_DIR=$(jq -r .skill_dir "$RUN_DIR/state.json")
+  cat "$SKILL_DIR/SKILL.md"
+  cat "$SKILL_DIR/INVARIANTS.md"
+  ```
+
+  Read the actual file — do not summarize, skim, or skip on the
+  basis of "I remember the spec." After hours of work and multiple
+  compactions, your memory of the spec is wrong; the disk is the
+  source of truth.
 - Return to **Outer 0**.
 
 ---
@@ -691,30 +714,15 @@ Write a detailed implementation plan for THIS task to
 - Test strategy
 - Risks or assumptions
 
-### Inner 2: Task Plan Adversarial Review
-
-```bash
-# $PROMPT = state.json (verbatim) + current-decomp.md + current-plan.md.
-# $OUT    = $RUN_DIR/key-results/<G>/tasks/<S>/plan-adversarial.txt
-echo "$PROMPT" | codex exec - -s read-only -c 'model_reasoning_effort="high"' 2>&1 \
-  | tee "$OUT" >/dev/null
-```
-
-Save the full output to `$RUN_DIR/key-results/<G>/tasks/<S>/plan-adversarial.txt`
-and record the path in the task's `plan_adversarial_file`.
-
-If Codex raises valid concerns, revise `current-plan.md` and re-run. Max 2
-revision rounds; if still contested, note disagreement in state + handoff and
-proceed.
-
-**Inner 2 and Inner 4 are NOT interchangeable.** Inner 2 reviews the *plan*.
-Inner 4 reviews the *actual code*. Running Inner 2 does NOT satisfy Inner 4.
-
-### Inner 3: Execute
+### Inner 2: Execute
 
 **Run the drift check** (git mode).
 
-**Git mode:** record a snapshot for scoped rollback:
+**Git mode:** record a snapshot for scoped rollback. **This is
+mandatory for every task — including docs-only tasks, tasks you expect
+to pass first try, and tasks delegated to a subagent.** A missing
+`pre-files.txt` will fail the Inner 5 pre-commit gate, because scoped
+rollback cannot run cleanly without it.
 
 ```bash
 SUBTASK_START_COMMIT=$(git rev-parse HEAD)
@@ -722,7 +730,9 @@ SUBTASK_START_COMMIT=$(git rev-parse HEAD)
   | sort -zu > "$RUN_DIR/key-results/<G>/tasks/<S>/pre-files.txt"
 ```
 
-Save `start_commit` in the task's state entry.
+Save `start_commit` in the task's state entry. **Also set
+`state.key_results[G].tasks[S].pre_files_recorded = true`** — the
+Inner 5 gate checks this flag before staging.
 
 **Degrade mode:** no rollback available. A failed task will leave partial
 changes in the working tree.
@@ -737,17 +747,17 @@ the task's `decisions_made`.
 - **Stay in scope of the task.** Don't silently expand into the next
 task's work.
 - **Write tests.**
-- **Subagent delegation is allowed for Inner 3 ONLY.** Prompt MUST include:
+- **Subagent delegation is allowed for Inner 2 ONLY.** Prompt MUST include:
   - "Do NOT run `git add` or `git commit`"
   - "Only create/modify files listed in the plan"
   - "Report all files changed when done"
 
-  The night shift agent MUST then independently run Inner 4–7 itself. A
+  The night shift agent MUST then independently run Inner 3–6 itself. A
   subagent's "done" is NOT evidence of quality. The Codex review is.
 
-  **Do NOT delegate Inner 0, 1, 2, 4, 5, 6, or 7.**
+  **Do NOT delegate Inner 0, 1, 3, 4, 5, or 6.**
 
-### Inner 4: Code Review Loop (Codex) — with file gate
+### Inner 3: Code Review Loop (Codex) — with file gate
 
 **Run the drift check** before the first review round.
 
@@ -759,7 +769,7 @@ REVIEW_ROUND      = 0
 CODEX_OUTPUT_FILE = "$RUN_DIR/key-results/<G>/tasks/<S>/code-review.txt"
 BASE_SHA          = <the task's start_commit from state.json>
 
-while REVIEW_ROUND < 3:
+while REVIEW_ROUND < 10:
     REVIEW_ROUND += 1
     # Invoke via the Bash tool with timeout: 600000 (10 min):
     codex review --base $BASE_SHA -c 'model_reasoning_effort="high"' 2>&1 \
@@ -778,25 +788,33 @@ while REVIEW_ROUND < 3:
         → Update state with round + findings
         → CONTINUE (re-run review on the fixes, overwriting CODEX_OUTPUT_FILE)
 
-If REVIEW_ROUND == 3 and still P1/P2:
+If REVIEW_ROUND == 10 and still P1/P2:
     → HARD STOP: revert task via scoped rollback, mark blocked
 ```
 
 **Every fix MUST be re-reviewed.** The loop only exits when Codex reports no
-significant issues, or after 3 failed rounds (triggers revert). No "findings
+significant issues, or after 10 failed rounds (triggers revert). No "findings
 don't apply" escape — fix them or revert.
 
 **"Clean"** = no `[P1]` or `[P2]` markers in the Codex output.
 
-**Does NOT count as running Inner 4:**
+**Audit-trail option:** intermediate rounds MAY be saved as
+`review-round-N.txt` alongside `code-review.txt` so the per-round Codex
+output is preserved across revisions. This is encouraged for tasks that
+take more than ~3 rounds — without it, the iteration history is lost
+and post-mortem debugging is impossible. `code-review.txt` MUST always
+be the FINAL verdict file (overwritten each round, last write wins) —
+it is what the Inner 5 structural gate checks. The `review-round-N.txt`
+files are audit-only and not gated.
 
-- Citing a prior Inner 2 adversarial review
+**Does NOT count as running Inner 3:**
+
 - "Too simple to need review"
 - "Tests pass so it's fine"
 - Running the review on a different task
 - Writing a plausible-looking review to the file without actually running Codex
 
-### Inner 5: Validate
+### Inner 4: Validate
 
 Before marking the task complete:
 
@@ -824,30 +842,46 @@ on the fixes
 **Principle: never commit code that doesn't pass tests.** The human wakes up
 to a branch where every commit is green, even if fewer tasks completed.
 
-### Inner 6: Commit (git mode) / Record (degrade mode)
+### Inner 5: Commit (git mode) / Record (degrade mode)
 
 **Git mode — Run the drift check first.**
 
 **Pre-commit structural gate.** Before staging anything, verify ALL of:
 
-1. `state.key_results[G].tasks[S].code_review_status == "clean"`
+1. `state.key_results[G].tasks[S].code_review_status` is either `"clean"`
+   OR `"self-reviewed-unavailable"` (no other value passes the gate)
 2. `state.key_results[G].tasks[S].code_review_file` is set AND the file
-
-  exists AND is non-empty
+   exists AND is non-empty
 3. The file contains a Codex verdict line (the `code_review_evidence` stored
-
-  in state matches a line in the file)
+   in state matches a line in the file)
+4. **If `code_review_status == "self-reviewed-unavailable"`,** the file
+   MUST also contain the literal header line beginning with
+   `CODEX UNAVAILABLE — SELF-REVIEW`. This is what distinguishes an honest
+   Codex-down self-review from a fabricated `code-review.txt` written to
+   bypass the gate.
+5. `state.key_results[G].tasks[S].pre_files_recorded == true` AND the file
+   `pre-files.txt` exists in the task folder. Without it, scoped rollback
+   cannot run cleanly if a later task needs to revert this one.
 
 ```bash
 REVIEW_FILE="$RUN_DIR/key-results/<G>/tasks/<S>/code-review.txt"
+PRE_FILES="$RUN_DIR/key-results/<G>/tasks/<S>/pre-files.txt"
+
 [ -s "$REVIEW_FILE" ] || { echo "FATAL: code-review.txt missing or empty"; exit 1; }
+[ -s "$PRE_FILES" ]  || { echo "FATAL: pre-files.txt missing — Inner 2 was skipped"; exit 1; }
 grep -qF "$CODE_REVIEW_EVIDENCE" "$REVIEW_FILE" || { echo "FATAL: verdict line not in file"; exit 1; }
+
+if [ "$CODE_REVIEW_STATUS" = "self-reviewed-unavailable" ]; then
+  grep -qE '^CODEX UNAVAILABLE — SELF-REVIEW' "$REVIEW_FILE" \
+    || { echo "FATAL: self-review claimed but header missing"; exit 1; }
+fi
 ```
 
 If any of this fails, the task CANNOT be committed — revert it. Hard
 gate. No exceptions. This exists specifically to prevent the agent from
 rationalizing "I'll skip Codex for efficiency" after a context compaction:
-the file either exists with real Codex output, or the task dies here.
+the file either exists with real Codex output (or a properly-headered
+self-review with `pre-files.txt` recorded), or the task dies here.
 
 Stage only this task's deliverables with targeted `git add`:
 
@@ -878,7 +912,7 @@ Update state.json:
 **Degrade mode:** no commit. Update state.json same way but with
 `commit: null`. Changes remain in the working tree.
 
-### Inner 7: Update State and Next Task
+### Inner 6: Update State and Next Task
 
 Delete `$RUN_DIR/current-plan.md`: `rm "$RUN_DIR/current-plan.md"`.
 
@@ -986,10 +1020,52 @@ key result would over-engineer or over-optimize the objective:
 2. Run Codex adversarial review on the draft. **Pass the full `state.json`
    to Codex verbatim** alongside the draft — the "done vs keep going"
    decision is only valid if Codex sees the literal objective and the complete
-   key-result history. Paraphrasing is forbidden here; it was the specific
-   failure mode that caused Codex to approve a premature end in an earlier run.
+   key-result history. Paraphrasing is forbidden here; a paraphrased
+   summary lets the agent quietly drop the inconvenient parts of the
+   objective and biases Codex toward agreement.
+
+   **Prompt scaffold for Codex** — wrap the inputs with explicit rejection
+   criteria. Without this, Codex has approved drafts whose lead reasoning was
+   "time remaining" or "diminishing returns":
+
+   ```
+   You are adversarially reviewing a night-shift agent's draft argument
+   that the shift should end (Condition 2: dual consensus).
+
+   Inputs:
+   ----- state.json (verbatim) -----
+   <state.json contents>
+   ----- end-consensus-draft.md -----
+   <draft contents>
+   ----- objective (verbatim, for cross-check) -----
+   <state.objective>
+
+   Your job: stress-test whether the objective is genuinely fulfilled OR
+   whether any further KR would actively over-engineer / over-optimize it.
+
+   FLAG AS [P1] AND REJECT THE DRAFT if its load-bearing rationale (or any
+   numbered/bulleted reason) reduces to ANY of the following — even if
+   other valid-sounding reasons are also cited:
+
+   - Time remaining / time pressure / "won't fit before the cap"
+   - Diminishing returns / lower-value remaining work
+   - Deferral to ROADMAP / future shift / TODO file / next session
+   - "Foundation in place" / "natural stopping point" / "good break here"
+   - "Cleaner to ship what we have than fold in more"
+
+   These are stopping preferences, not evidence the objective is done.
+   The 8-hour cap path handles the time case on its own. If you find any
+   of the above, do NOT approve — instead, propose a concrete next KR
+   that advances an unfulfilled component of the literal objective.
+
+   Approve ("no P1/P2 contesting done") ONLY if you can affirmatively say:
+   "Every component of the literal objective is shipped OR any further KR
+   targeting an unshipped component would make the result worse, not just
+   less polished."
+   ```
+
   ```bash
-  # $PROMPT = state.json (verbatim) + end-consensus-draft.md.
+  # $PROMPT = the scaffold above with state.json + draft + objective inlined.
   # $OUT    = $RUN_DIR/end-consensus.txt
   echo "$PROMPT" | codex exec - -s read-only -c 'model_reasoning_effort="high"' 2>&1 \
     | tee "$OUT" >/dev/null
@@ -1006,6 +1082,31 @@ key result would over-engineer or over-optimize the objective:
   (the agent may refine it, but cannot discard it without a
   counter-argument Codex re-reviews). This is how Codex blocks early
   exit.
+
+**The bar for "done":** any further key result would *actively
+over-engineer or over-optimize the literal objective* — i.e., make the
+result worse, not just less polished or less complete. If you can
+articulate any KR that would still measurably advance the objective,
+you are not done — even if that KR is messy, ambitious, or unlikely
+to finish cleanly.
+
+**Not valid as "done" rationale.** If the agent's honest framing of
+*why we're done* reduces to any of the items below, it MUST NOT write
+`end-consensus-draft.md` at all. Return to Outer A and propose another
+key result instead. These reasons are categorically insufficient
+because they describe a *stopping preference*, not the objective being
+fulfilled or further work being harmful:
+
+- "Diminishing returns" / "remaining work is lower-value"
+- "Rest deferred to ROADMAP / future shift / TODO file / next session"
+- "Foundation in place" / "natural stopping point" / "good break here"
+- "Cleaner to ship what we have than fold in more"
+- **"Not enough time left in the 8-hour cap to fit another KR."**
+  Time estimates CANNOT justify ending early. The agent's runway
+  estimates are unreliable, and Condition 1 + the handoff procedure
+  exist precisely so the agent never has to predict whether the next
+  KR will finish — start it, and if the cap fires mid-task, the cap
+  path handles it cleanly. Run out the clock.
 
 There is no Codex-initiated end path. Repeated Outer B rejections are a
 signal *to the agent* that it should write `end-consensus-draft.md` and run
@@ -1045,34 +1146,29 @@ task looks 3× the running mean, split it. If it looks 3× smaller, merge
 with an adjacent one. This keeps durations honest — no static "small/medium/
 large" heuristic table.
 
-For end-condition proximity, the agent can estimate whether another key result
-will fit in the remaining wall-clock before the 8h cap:
-
-```
-remaining_minutes = hard_cap_hours * 60 - minutes_since(started_at)
-expected_key_result_minutes = average_key_result_duration_minutes (mean of
-                            duration_minutes across completed key results)
-```
-
-If `remaining_minutes < expected_key_result_minutes`, the agent may choose to
-go to Condition 2 early (propose "done"), but this is a suggestion, not a
-rule — Codex still has to agree.
+**Time estimates do NOT influence end conditions.** Do not use the
+running mean to predict whether another key result will fit in the
+remaining wall-clock and propose "done" on that basis. The agent's
+runway estimates are unreliable; Condition 1 (hard cap) + the handoff
+procedure handle the actual-cap-fires case cleanly. Always start the
+next KR if the objective still needs work — see §Condition 2 for the
+list of insufficient "done" rationales.
 
 ## Codex Unavailability
 
 **"Unavailable" = Codex returned a technical error** (command not found,
 timeout, runtime crash). It does NOT mean you decided to skip it. Choosing to
 skip Codex is a protocol violation, not an unavailability event. Skipping
-Outer B, Inner 2, or Inner 4 by choice means the task MUST be reverted.
+Outer B, Outer D, or Inner 3 by choice means the task MUST be reverted.
 
 If Codex is genuinely unavailable:
 
-- **Adversarial review (Outer B / Inner 2):** Proceed without it — adversarial
+- **Adversarial review (Outer B / Outer D):** Proceed without it — adversarial
 review is valuable but not the primary quality gate. Write a short note to
-the corresponding adversarial file (e.g. `plan-adversarial.txt`) containing
+the corresponding adversarial file (e.g. `decomp-adversarial.txt`) containing
 `"UNAVAILABLE: <error message>"` so the artifact still exists. Record the
 skip in state.json.
-- **Code review (Inner 4):** Primary quality gate. If unavailable:
+- **Code review (Inner 3):** Primary quality gate. If unavailable:
   - Perform a self-review: re-read all changed files with fresh eyes.
   - Run the test suite as the minimum quality bar.
   - Write the self-review output to the task's `code-review.txt` with
@@ -1183,23 +1279,82 @@ git reset --hard BASE_COMMIT
 
 ```
 
-Terminal summary after writing the handoff:
+Terminal summary after writing the handoff.
+
+The output is a **locked template** — exact field order, no free-form
+prose, no extra sections, no embellishment between fields. Every shift's
+ending must look visually identical so the human can scan it at a
+glance. The only place for judgment is the **headline**, which is the
+verbatim first sentence of the handoff's `## Summary` section (do not
+paraphrase, do not compose a new one — copy it).
 
 ```
+══════════════════════════════════════════════════════════════════════
+  NIGHT SHIFT ENDED — <end_reason>
+══════════════════════════════════════════════════════════════════════
 
-Night shift complete! Handoff: .night-shift/runs/RUN_ID/handoff.md
-Run folder kept at: .night-shift/runs/RUN_ID/
+  <headline — verbatim first sentence of handoff ## Summary>
 
-Branch: BRANCH (N new commits since BASE_COMMIT)
-Run `git log BASE_COMMIT..HEAD --oneline` to review.
+  Run ID:    RUN_ID
+  Started:   YYYY-MM-DD HH:MM TZ
+  Ended:     YYYY-MM-DD HH:MM TZ
+  Elapsed:   Xh Ym  (cap: 8h)
 
-Completed: N/total goals
+  Branch:    BRANCH                                  [git mode only]
+  Commits:   N new since BASE_COMMIT                 [git mode only]
+  Review:    git log BASE_COMMIT..HEAD --oneline     [git mode only]
 
-- Goal 1: [title]
-- Goal 2: [title]
-- Goal 3: [title] (blocked — see handoff)
+  Handoff:   .night-shift/runs/RUN_ID/handoff.md
+  Run dir:   .night-shift/runs/RUN_ID/
 
+──────────────────────────────────────────────────────────────────────
+  KEY RESULTS  (T total · C completed · B blocked · R reverted/superseded)
+──────────────────────────────────────────────────────────────────────
+
+  ✓ KR2   <title from state.key_results[].title>
+  ✓ KR3   <title>
+  ⊘ KR4   <title> (blocked — <one-phrase reason from state>)
+  ✗ KR1   <title> (superseded by KR2)
+
+──────────────────────────────────────────────────────────────────────
+  Tests: P/T total                                   [if recorded in state]
+══════════════════════════════════════════════════════════════════════
 ```
+
+**`<end_reason>` derives from `state.status`:**
+
+| `state.status`  | `<end_reason>`                                    |
+|-----------------|---------------------------------------------------|
+| `completed`     | `dual consensus — <rationale, ≤ ~8 words>`        |
+| `hard-capped`   | `8-hour hard cap`                                 |
+| `interrupted`   | `user stopped`                                    |
+| `drift-stopped` | `drift detected — handoff NOT written`            |
+
+For `completed`, the `<rationale>` is a short phrase summarizing **why
+further work would not help** — taken from the corresponding section of
+`end-consensus-draft.md` (the same "why over-engineering" reasoning Codex
+just agreed with). Keep it terse and concrete. Examples:
+
+- `dual consensus — objective fully achieved`
+- `dual consensus — remaining work would over-engineer the objective`
+- `dual consensus — remaining work blocked on external decisions`
+- `dual consensus — remaining work needs human input the agent cannot supply`
+
+**KR list:** order = completed first (in completion order), then blocked,
+then reverted/superseded. Glyphs are fixed: `✓` completed, `⊘` blocked,
+`✗` reverted or superseded. The parenthesized annotation is **only**
+the terminal status reason (≤ ~6 words copied from state) — never free
+prose.
+
+**`drift-stopped` variant:** omit the headline (no handoff Summary
+exists). Replace the `Handoff:` line with `Handoff:   NOT WRITTEN — see
+drift output above`. Everything else stays.
+
+**Forbidden in the terminal summary:** `Status:` paragraphs, narrative
+sentences between fields, per-KR commentary beyond the parenthesized
+status reason, emoji, ASCII art beyond the three horizontal rules
+shown. If you feel the urge to add nuance, it belongs in the handoff
+file, not this banner.
 
 ## Stop / Resume / Abandon (active-shift re-trigger)
 
@@ -1267,9 +1422,9 @@ exists. Also the Stop path from §Stop/Resume/Abandon.
 
 1. Finish the current atomic operation — don't leave broken code mid-edit.
 2. For the in-progress task:
-   - If it has **already passed both Inner 4 (Codex review clean) and
-     Inner 5 (tests pass)** and all structural-gate requirements are met,
-     commit it normally via Inner 6.
+   - If it has **already passed both Inner 3 (Codex review clean) and
+     Inner 4 (tests pass)** and all structural-gate requirements are met,
+     commit it normally via Inner 5.
    - Otherwise, **revert it** (git mode) or mark blocked and leave partial
      changes (degrade mode). The Codex review requirement and file gate are
      NOT waived by early stop.

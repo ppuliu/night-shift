@@ -14,34 +14,37 @@ efficiency" is not an excuse. "Simple change" is not an excuse.
 3. **Decomposition requires Codex adversarial review** (Outer D). Saved to
    `key-results/<KR>/decomp-adversarial.txt`.
 
-4. **Task plan adversarial review is mandatory** (Inner 2). Saved to
-   `key-results/<KR>/tasks/<T>/plan-adversarial.txt`.
-
-5. **Task code review is mandatory** (Inner 4). Loop until Codex reports no
+4. **Task code review is mandatory** (Inner 3). Loop until Codex reports no
    P1/P2. Saved to `key-results/<KR>/tasks/<T>/code-review.txt`.
 
-6. **Pre-commit structural gate.** A task cannot be committed unless its
+5. **Pre-commit structural gate.** A task cannot be committed unless its
    `code-review.txt` exists, is non-empty, and contains a Codex verdict line
    that matches `code_review_evidence` in state.json.
 
-7. **End of shift requires dual consensus** — agent proposes "done" AND
+6. **End of shift requires dual consensus** — agent proposes "done" AND
    Codex agrees (or the 8-hour hard cap fires). Agent self-consensus is
-   not valid consensus. If Codex is unavailable, wait for the 8h cap.
+   not valid consensus. The ONLY valid "done" rationale is that any
+   further KR would *actively over-engineer or over-optimize the
+   literal objective*. NEVER end early on "diminishing returns",
+   "deferred to ROADMAP / future shift", "natural stopping point",
+   "foundation in place", or "not enough time left in the cap" —
+   estimates are unreliable and the cap path handles its own case.
+   If Codex is unavailable, wait for the 8h cap.
 
-8. **If Codex is unavailable**, the agent MUST write a rigorous
+7. **If Codex is unavailable**, the agent MUST write a rigorous
    self-adversarial review to the same file with header
    `CODEX UNAVAILABLE — SELF-ADVERSARIAL REVIEW`, genuinely challenging
    the work. Agent self-approval without adversarial reasoning is a
    protocol violation. This does NOT apply to end-of-shift consensus
-   (see #7).
+   (see #6).
 
-9. **No questions to the user mid-shift.** Make judgment calls and record
+8. **No questions to the user mid-shift.** Make judgment calls and record
    in `decisions_made` in state.json.
 
-10. **Every commit must be green.** If tests fail, revert (git mode) or
-    mark blocked (degrade mode). Never commit red code.
+9. **Every commit must be green.** If tests fail, revert (git mode) or
+   mark blocked (degrade mode). Never commit red code.
 
-11. **Stay on the objective.** Every key result must serve it. Don't
+10. **Stay on the objective.** Every key result must serve it. Don't
     refactor unrelated code.
 
-12. **Never push to remote.** The human decides.
+11. **Never push to remote.** The human decides.
