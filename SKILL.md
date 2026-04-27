@@ -76,7 +76,77 @@ uncommitted changes, objective, goal approval), send a single question,
 wait for the reply, then proceed to the next check. This keeps the pre-flight
 conversational and avoids overwhelming the user with a wall of decisions.
 
-### 1. Bypass-permissions confirmation
+### 1. Skill version check + auto-update
+
+Run this **first**, before any user prompt. It resolves the skill's install
+directory (used throughout pre-flight and by every later context refresh)
+and checks whether a newer version of the skill exists upstream. If so, it
+pulls it in. The check is fast (one `curl` to a GitHub raw URL) so it runs
+on every shift — no throttling.
+
+Updates apply to the **next** `/night-shift` invocation — Claude has already
+loaded the current SKILL.md into context, so hot-swapping the running shift
+is not possible. That is fine: the shift in progress completes on the loaded
+version, the next one picks up the update.
+
+```bash
+# Resolve SKILL_DIR. Plugin install first (authoritative), then user-level clone.
+SKILL_DIR=""
+INSTALLED_JSON="$HOME/.claude/plugins/installed_plugins.json"
+PLUGIN_KEY=""
+if [ -f "$INSTALLED_JSON" ] && command -v jq >/dev/null 2>&1; then
+  PLUGIN_KEY=$(jq -r '
+    .plugins // {} | to_entries[]
+    | select(.key | startswith("night-shift@"))
+    | .key
+  ' "$INSTALLED_JSON" 2>/dev/null | head -1)
+  if [ -n "$PLUGIN_KEY" ]; then
+    SKILL_DIR=$(jq -r --arg k "$PLUGIN_KEY" '
+      .plugins[$k][0].installPath // empty
+    ' "$INSTALLED_JSON" 2>/dev/null)
+  fi
+fi
+if [ -z "$SKILL_DIR" ] || [ ! -f "$SKILL_DIR/.claude-plugin/plugin.json" ]; then
+  if [ -f "$HOME/.claude/skills/night-shift/.claude-plugin/plugin.json" ]; then
+    SKILL_DIR="$HOME/.claude/skills/night-shift"
+    PLUGIN_KEY=""   # clone install — no marketplace key
+  else
+    SKILL_DIR=""    # could not resolve — auto-update will be skipped
+  fi
+fi
+
+# Compare local vs upstream version (no jq required — sed parses the tiny
+# version field, so this works even before §3 installs jq).
+if [ -n "$SKILL_DIR" ]; then
+  LOCAL_PJ="$SKILL_DIR/.claude-plugin/plugin.json"
+  LOCAL_VER=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$LOCAL_PJ" | head -1)
+  REMOTE_VER=$(curl -fsS --max-time 5 \
+    "https://raw.githubusercontent.com/ppuliu/night-shift/main/.claude-plugin/plugin.json" \
+    2>/dev/null | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+
+  if [ -n "$LOCAL_VER" ] && [ -n "$REMOTE_VER" ] && [ "$LOCAL_VER" != "$REMOTE_VER" ] \
+     && [ "$(printf '%s\n%s\n' "$LOCAL_VER" "$REMOTE_VER" | sort -V | tail -1)" = "$REMOTE_VER" ]; then
+    if git -C "$SKILL_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      git -C "$SKILL_DIR" pull --ff-only --quiet 2>/dev/null \
+        && echo "night-shift: updated $LOCAL_VER → $REMOTE_VER (git clone). Active on next /night-shift run."
+    else
+      TARGET="${PLUGIN_KEY:-night-shift}"
+      claude plugin update "$TARGET" >/dev/null 2>&1 \
+        && echo "night-shift: updated $LOCAL_VER → $REMOTE_VER (plugin). Active on next /night-shift run."
+    fi
+  fi
+fi
+```
+
+`SKILL_DIR` is reused below: in §9 it is written to `state.json.skill_dir`,
+and in §10 it locates `INVARIANTS.md`. If the probe failed (neither install
+location matched), continue without auto-update — the shift can still run as
+long as `INVARIANTS.md` is reachable via the fallback in §10.
+
+Network failures, HTTP errors, and missing `claude` CLI are all swallowed
+silently. This step must never block a shift from starting.
+
+### 2. Bypass-permissions confirmation
 
 Night shift is fully autonomous — it runs many tool calls and edits without human
 input. If Claude Code is NOT launched with `--dangerously-skip-permissions`, the
@@ -98,7 +168,7 @@ with the flag and trigger night shift again.
 
 If the user says no → abort with the above instructions. If yes → continue.
 
-### 2. `jq` dependency
+### 3. `jq` dependency
 
 Every subsequent step reads/writes `state.json` with `jq`. If it is not on
 PATH, install it via the platform's package manager before proceeding:
@@ -127,7 +197,7 @@ user is still present), so a password prompt is acceptable here — it would
 not be acceptable once the autonomous loop starts. After installing, re-check
 `command -v jq` and abort with a clear message if it still isn't available.
 
-### 3. Git repo detection
+### 4. Git repo detection
 
 Run `git rev-parse --is-inside-work-tree` to determine if the cwd is inside a
 git repo.
@@ -143,7 +213,7 @@ limitations. Warn the user once and ask for confirmation before proceeding:
   ```
   If yes → continue in degrade mode. If no → abort.
 
-### 4. Gitignore entry (git mode only)
+### 5. Gitignore entry (git mode only)
 
 Ensure `.night-shift/` is ignored. Read `.gitignore` (create if missing) and
 append `.night-shift/` on its own line if not already present. This is a one-line
@@ -158,7 +228,7 @@ fi
 Do NOT use `.git/info/exclude` — we prefer the tracked `.gitignore` for
 collaborator consistency and clarity.
 
-### 5. Branch check (git mode only)
+### 6. Branch check (git mode only)
 
 Run `git branch --show-current`. Must not be `main` or `master`.
 
@@ -171,7 +241,7 @@ run `git checkout -b <name>` and proceed.
 
 Record the branch as `BRANCH` and the current commit as `BASE_COMMIT`.
 
-### 6. Clean working tree (git mode only)
+### 7. Clean working tree (git mode only)
 
 Run `git status --short`. If there are uncommitted changes (other than the
 `.gitignore` line we just added), ask the user to commit or stash them. This is
@@ -180,13 +250,13 @@ the only other permitted question besides goal confirmation.
 If the `.gitignore` change is the only dirty file, commit it automatically
 with message `chore: ignore .night-shift/` before proceeding.
 
-### 7. Active-shift guard
+### 8. Active-shift guard
 
 This should have been handled in §Routing, but guard against races: re-scan
 `.night-shift/runs/*/state.json` and verify no `status: "running"` entry exists.
 If one appeared between routing and here, loop back to §Stop-Resume-Abandon.
 
-### 8. Initialize this run
+### 9. Initialize this run
 
 **All timestamps in this skill are LOCAL time, not UTC.** Run folders and
 handoffs are read by the human on their wall clock; UTC makes "when did this
@@ -206,6 +276,10 @@ is interactive, not autonomous work. The shift clock starts at the handoff
 banner (see §Objective Confirmation), so elapsed-time and the 8h hard cap
 measure only the autonomous portion.
 
+The `skill_dir` field below holds the `$SKILL_DIR` resolved in §1; substitute
+the real path when writing the file. See §10 for the fallback if §1's probe
+failed.
+
 ```json
 {
   "run_id": "2026-04-19-0847",
@@ -213,7 +287,7 @@ measure only the autonomous portion.
   "started_at": null,
   "mode": "git",
   "cwd": "/abs/path/to/project",
-  "skill_dir": "/Users/.../.claude/skills/night-shift",
+  "skill_dir": "<$SKILL_DIR resolved in §1>",
   "branch": "feat/xyz",
   "base_commit": "abc1234",
   "expected_head": "abc1234",
@@ -228,27 +302,32 @@ measure only the autonomous portion.
 
 (In degrade mode: `"mode": "no-git"`, omit `branch`, `base_commit`, `expected_head`.)
 
-### 9. Locate INVARIANTS.md in the skill directory
+### 10. Verify INVARIANTS.md is reachable
 
 The non-negotiable rules live in `INVARIANTS.md`, a sibling of this SKILL.md
 in the skill's install directory. The agent does NOT copy it into the run
 folder — it reads directly from the skill dir every time it needs a refresh.
 
-Record the skill directory path in `state.json` as `skill_dir` so later
-tasks (which run after context compaction) can find the invariants file
-without re-deriving the path:
+`SKILL_DIR` (resolved in §1, recorded as `state.json.skill_dir` in §9) is what
+later tasks read after context compaction. Sanity-check that the file is
+reachable before proceeding:
 
-```json
-{
-  "skill_dir": "/Users/.../.claude/skills/night-shift",
-  ...
+```bash
+test -f "$SKILL_DIR/INVARIANTS.md" || {
+  # Last-ditch fallback: §1's probe failed AND state.json's skill_dir is bogus.
+  if [ -f "$HOME/.claude/skills/night-shift/INVARIANTS.md" ]; then
+    SKILL_DIR="$HOME/.claude/skills/night-shift"
+    jq --arg sd "$SKILL_DIR" '.skill_dir = $sd' "$RUN_DIR/state.json" \
+      > "$RUN_DIR/state.json.tmp" && mv "$RUN_DIR/state.json.tmp" "$RUN_DIR/state.json"
+  else
+    echo "FATAL: cannot locate INVARIANTS.md — aborting shift." >&2
+    exit 1
+  fi
 }
 ```
 
-The agent can locate the skill dir at pre-flight time because it was loaded
-from there. If the path is ever unknown at runtime, fall back to
-`$HOME/.claude/skills/night-shift/INVARIANTS.md` (the default user-level
-install location).
+Aborting here is correct: every per-task refresh in §Inner 0 reads
+`$SKILL_DIR/INVARIANTS.md`, so the run cannot proceed without it.
 
 ## Objective Question
 
