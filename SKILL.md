@@ -522,7 +522,7 @@ Valid task `status` values: `pending`, `in_progress`, `completed`,
 Update state.json after:
 
 - Any status change (key result or task)
-- Each Codex review round (approval, decomp adversarial, plan adversarial, code review)
+- Each Codex review round (approval, decomp adversarial, code review)
 - Start / end of each task and key result (with timestamps — used for
 dynamic duration estimation)
 - Each test run

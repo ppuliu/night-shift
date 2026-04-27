@@ -44,7 +44,7 @@ Night Shift makes three structural bets:
 
 ## How it works
 
-Each task runs: Claude plans → Codex reviews the plan → Claude implements → Codex reviews the code (loops until clean, hard-stops and reverts at 3 rounds) → tests must pass → file-gated commit. The pre-commit gate refuses to stage a task whose `code-review.txt` is missing, empty, or doesn't match the verdict recorded in state.
+Each task runs: Claude plans → Claude implements → Codex reviews the code (loops until clean, hard-stops and reverts at 10 rounds) → tests must pass → file-gated commit. The pre-commit gate refuses to stage a task whose `code-review.txt` is missing, empty, or doesn't match the verdict recorded in state.
 
 Work is organized as:
 
@@ -111,7 +111,6 @@ Night Shift never runs `git push` and never opens PRs. You decide what ships.
     ├── codex-approval.txt          Was this KR worth doing?
     ├── decomp-adversarial.txt      Are these the right tasks?
     └── tasks/<T>/
-        ├── plan-adversarial.txt    Is this plan sound?
         └── code-review.txt         Is the code clean?
 ```
 
