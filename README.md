@@ -29,7 +29,7 @@ When OpenAI Codex is available, every commit is gated by an independent review f
 ═══════════════════════════════════════════════════════════════
 ```
 
-https://github.com/user-attachments/assets/d44f8393-7c73-4133-9830-d2f072579817
+<a href="https://www.loom.com/share/6bcfdd2579c74de5bdad595c686fa547" target="_blank" rel="noopener noreferrer"><img src="https://github.com/user-attachments/assets/1a95844b-51ca-4944-8918-2a49c3f3e83a" alt="Watch the Night Shift demo on Loom"></a>
 
 
 ## Why
